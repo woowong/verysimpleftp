@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 
 #define COMMAND_SIZE 1024
 #define BUFFER_SIZE 1024
@@ -16,6 +17,8 @@ void ftp_pwd(char *cmd);
 void ftp_cd(char *cmd);
 void ftp_passive(char *cmd);
 void get_passive(char* ip, int* d_port);
+void ftp_get(char *cmd);
+void ftp_put(char *cmd);
 void ftp_list(char *cmd);
 // socket fucntion
 int connectSocket(char *ip, int port);
@@ -66,19 +69,18 @@ void cmdHandler(char *cmd)
 	else if ( !strcmp(token, "pwd") )
 		ftp_pwd(cmd);
 	else if ( !strcmp(token, "passive") )
-	{
-		// PASV
 		ftp_passive(cmd);
-	}
 	else if ( !strcmp(token, "cd") )
 		ftp_cd(cmd);
 	else if ( !strcmp(token, "get") )
 	{
 		// RETR <file>
+		ftp_get(cmd);
 	}
 	else if ( !strcmp(token, "put") )
 	{
 		// STOR <file>
+		ftp_put(cmd);
 	}
 	else if ( !strcmp(token, "ls") )
 		ftp_list(cmd);
@@ -136,21 +138,6 @@ void ftp_pwd(char *cmd)
 	printf("%s\n", readBuffer);
 }
 
-// CWD command
-void ftp_cd(char *cmd)
-{
-	char readBuffer[BUFFER_SIZE];
-	char sendBuffer[BUFFER_SIZE];
-	char destBuffer[BUFFER_SIZE];
-
-	sscanf(cmd, "%*s %s", destBuffer);
-
-	sprintf(sendBuffer, "CWD %s\r\n", destBuffer);
-	send(sock, sendBuffer, strlen(sendBuffer), 0);
-	recvMsg(sock, readBuffer, sizeof(readBuffer));
-	printf("%s\n", readBuffer);
-}
-
 // PASV command
 void ftp_passive(char *cmd)
 {
@@ -186,15 +173,124 @@ void get_passive(char* ip, int* d_port)
 	*d_port = pasv_port[0]*256 + pasv_port[1];	
 }
 
+// CWD command
+void ftp_cd(char *cmd)
+{
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char destBuffer[BUFFER_SIZE];
+
+	sscanf(cmd, "%*s %s", destBuffer);
+
+	sprintf(sendBuffer, "CWD %s\r\n", destBuffer);
+	send(sock, sendBuffer, strlen(sendBuffer), 0);
+	recvMsg(sock, readBuffer, sizeof(readBuffer));
+	printf("%s\n", readBuffer);
+}
+
+// RETR command
+void ftp_get(char *cmd)
+{
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char nameBuffer[BUFFER_SIZE];
+	char fileBuffer[BUFFER_SIZE]; 
+	char d_ip[16];
+	int d_port;
+	int file_size;
+	int read_byte, total_byte=0;
+	int fd;
+	// PASSIVE mode need
+	if (!is_passive) {
+		printf("You need to activate Passvie mode with PASV command.\n");
+		return;
+	}
+	// get filename
+	sscanf(cmd, "%*s %s", nameBuffer);
+	printf("local: %s remote: %s\n", nameBuffer, nameBuffer);
+	// make data path conneciton
+	get_passive(d_ip, &d_port);
+	d_sock = connectSocket(d_ip, d_port);
+		
+	sprintf(sendBuffer, "RETR %s\r\n", nameBuffer);
+	send(sock, sendBuffer, strlen(sendBuffer), 0);
+	recvMsg(sock, readBuffer, sizeof(readBuffer));
+	printf("%s\n", readBuffer);
+	
+	sscanf( strchr(readBuffer, '(')+1, "%d", &file_size );
+	fd = open(nameBuffer, O_WRONLY | O_CREAT, 0755);
+	while (total_byte < file_size) {
+		read_byte = recv(d_sock, fileBuffer, sizeof(fileBuffer), 0);
+		write(fd, fileBuffer, read_byte);
+		total_byte += read_byte;
+	}
+	close(fd);
+	
+	recvMsg(sock, readBuffer, sizeof(readBuffer));
+	printf("%s\n", readBuffer);
+
+	close(d_sock);
+}
+
+// STOR command
+void ftp_put(char *cmd)
+{
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char nameBuffer[BUFFER_SIZE];
+	char fileBuffer[BUFFER_SIZE]; 
+	char d_ip[16];
+	int d_port;
+	int file_size;
+	int read_byte, total_byte=0;
+	int fd;
+
+	// PASSIVE mode need
+	if (!is_passive) {
+		printf("You need to activate Passvie mode with PASV command.\n");
+		return;
+	}
+	// get filename
+	sscanf(cmd, "%*s %s", nameBuffer);
+	printf("local: %s remote: %s\n", nameBuffer, nameBuffer);
+	// make data path conneciton
+	get_passive(d_ip, &d_port);
+	d_sock = connectSocket(d_ip, d_port);
+		
+	sprintf(sendBuffer, "STOR %s\r\n", nameBuffer);
+	send(sock, sendBuffer, strlen(sendBuffer), 0);
+	recvMsg(sock, readBuffer, sizeof(readBuffer));
+		printf("000HAHAHA");
+	printf("%s\n", readBuffer);
+		printf("zzzzHAHAHA");
+
+		printf("111HAHAHA");
+	fd = open(nameBuffer, O_RDONLY);
+		printf("2222HAHAHA");
+	while ( (read_byte = recv(fd, fileBuffer, sizeof(fileBuffer), 0)) > 0)
+	{
+		printf("33333HAHAHA");
+		send(d_sock, fileBuffer, read_byte, 0);
+		total_byte += read_byte;
+	}
+	close(fd);
+	
+		printf("444444HAHAHA");
+	recvMsg(sock, readBuffer, sizeof(readBuffer));
+	printf("%s\n", readBuffer);
+
+	close(d_sock);
+}
+
 // LIST command
 void ftp_list(char *cmd)
 {
 	char readBuffer[BUFFER_SIZE];
-	char listBuffer[BUFFER_SIZE*8];
 	char sendBuffer[BUFFER_SIZE];
+	char listBuffer[BUFFER_SIZE*8];
 	char d_ip[16];
-	char *token;
 	int d_port;
+	char *token;
 
 	// PASSIVE mode need
 	if (!is_passive) {
@@ -204,7 +300,6 @@ void ftp_list(char *cmd)
 	// make data path conneciton
 	get_passive(d_ip, &d_port);
 	d_sock = connectSocket(d_ip, d_port);
-		
 	sprintf(sendBuffer, "LIST\r\n");
 	send(sock, sendBuffer, strlen(sendBuffer), 0);
 	
