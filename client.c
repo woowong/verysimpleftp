@@ -14,8 +14,6 @@ void cmdHandler(char *cmd);
 void ftp_open(char *cmd);
 // socket fucntion
 int connectSocket(char *ip, int port);
-
-
 	
 int sock; // for command path socket
 
@@ -25,25 +23,20 @@ int main(int argc, char* argv[])
 	int is_connected = 0; // boolean variable for connection status
 
 	if (argc == 3) {
-		
 		for (;;)
 		{
-			if (is_connected)
-			{
+			if (is_connected) {
 				printf("ftp>");
 				fgets(cmd, COMMAND_SIZE, stdin);
 			}
-			else
-			{
+			else {
 				sprintf(cmd, "open %s %s", argv[1], argv[2]);
 				is_connected = 1;
 			}
 			cmdHandler(cmd);
 		}
-
 	}
-	else
-	{
+	else {
 		printf("Usage : %s <Server IP> <Port>\n", argv[0]); 
 	}
 	return 0;
@@ -51,7 +44,11 @@ int main(int argc, char* argv[])
 
 void cmdHandler(char *cmd)
 {
-	char *token = strtok (cmd, " ");
+	char cmdBuffer[COMMAND_SIZE];
+	char *token;
+	
+	strcpy(cmdBuffer, cmd);
+	token = strtok (cmdBuffer, " ");
 
 	if ( !strcmp(token, "open") )
 	{
@@ -104,25 +101,24 @@ void ftp_open(char *cmd)
 
 	// command socket?
 	sock = connectSocket(ip, atoi(port));
-	read(sock, readBuffer, sizeof(readBuffer)-1);
+	recv(sock, readBuffer, sizeof(readBuffer)-1, 0);
+	printf("%s\n", readBuffer);
 
 	// send USER command
 	printf("Name : ");
 	fgets(input, BUFFER_SIZE, stdin);
 	sprintf(sendBuffer, "USER %s", input);
-	write(sock, sendBuffer, sizeof(sendBuffer));
-	read(sock, readBuffer, sizeof(readBuffer)-1);
+	send(sock, sendBuffer, strlen(sendBuffer), 0);
+	recv(sock, readBuffer, sizeof(readBuffer)-1, 0);
 	printf("%s\n", readBuffer);
 
 	// send PASS command
 	printf("Password : ");
 	fgets(input, BUFFER_SIZE, stdin);
 	sprintf(sendBuffer, "PASS %s", input);
-	write(sock, sendBuffer, sizeof(sendBuffer));
-	read(sock, readBuffer, sizeof(readBuffer)-1);
+	send(sock, sendBuffer, strlen(sendBuffer), 0);
+	recv(sock, readBuffer, sizeof(readBuffer)-1, 0);
 	printf("%s\n", readBuffer);
-
-
 }
 
 // Socket Connection
@@ -131,7 +127,7 @@ int connectSocket(char *ip, int port)
 	int sock;
 	struct sockaddr_in serv_addr;
 
-	sock = socket(PF_INET, SOCK_STREAM, 0);
+	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == -1) {
 		printf ("socket() error\n");
 		exit(-1);
