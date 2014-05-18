@@ -32,7 +32,6 @@ int main(int argc, char* argv[])
 {
 	char cmd[COMMAND_SIZE]; // buffer for Command input
 	int is_connected = 0; // boolean variable for connection status
-
 	if (argc == 3) {
 		for (;;)
 		{
@@ -73,15 +72,9 @@ void cmdHandler(char *cmd)
 	else if ( !strcmp(token, "cd") )
 		ftp_cd(cmd);
 	else if ( !strcmp(token, "get") )
-	{
-		// RETR <file>
 		ftp_get(cmd);
-	}
 	else if ( !strcmp(token, "put") )
-	{
-		// STOR <file>
 		ftp_put(cmd);
-	}
 	else if ( !strcmp(token, "ls") )
 		ftp_list(cmd);
 	else if ( !strcmp(token, "revget") )
@@ -260,26 +253,20 @@ void ftp_put(char *cmd)
 	sprintf(sendBuffer, "STOR %s\r\n", nameBuffer);
 	send(sock, sendBuffer, strlen(sendBuffer), 0);
 	recvMsg(sock, readBuffer, sizeof(readBuffer));
-		printf("000HAHAHA");
 	printf("%s\n", readBuffer);
-		printf("zzzzHAHAHA");
-
-		printf("111HAHAHA");
+	
 	fd = open(nameBuffer, O_RDONLY);
-		printf("2222HAHAHA");
-	while ( (read_byte = recv(fd, fileBuffer, sizeof(fileBuffer), 0)) > 0)
+	while ( (read_byte = read(fd, fileBuffer, sizeof(fileBuffer)) ) > 0)
 	{
-		printf("33333HAHAHA");
-		send(d_sock, fileBuffer, read_byte, 0);
+		write(d_sock, fileBuffer, read_byte);
 		total_byte += read_byte;
 	}
 	close(fd);
-	
-		printf("444444HAHAHA");
-	recvMsg(sock, readBuffer, sizeof(readBuffer));
-	printf("%s\n", readBuffer);
 
 	close(d_sock);
+
+	recvMsg(sock, readBuffer, sizeof(readBuffer));
+	printf("%s\n", readBuffer);
 }
 
 // LIST command
