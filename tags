@@ -1,0 +1,24 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+BUFFER_SIZE	client.c	9;"	d	file:
+COMMAND_SIZE	client.c	8;"	d	file:
+cmdHandler	client.c	/^void cmdHandler(char *cmd)$/;"	f
+connectSocket	client.c	/^int connectSocket(char *ip, int port)$/;"	f
+d_sock	client.c	/^int d_sock; \/\/ data path socket$/;"	v
+error_handling	server.c	/^void error_handling (char *msg)$/;"	f
+ftp_cd	client.c	/^void ftp_cd(char *cmd)$/;"	f
+ftp_get	client.c	/^void ftp_get(char *cmd)$/;"	f
+ftp_list	client.c	/^void ftp_list(char *cmd)$/;"	f
+ftp_open	client.c	/^void ftp_open(char *cmd)$/;"	f
+ftp_passive	client.c	/^void ftp_passive(char *cmd)$/;"	f
+ftp_pwd	client.c	/^void ftp_pwd(char *cmd)$/;"	f
+get_passive	client.c	/^void get_passive(char* ip, int* d_port)$/;"	f
+is_passive	client.c	/^int is_passive=0; \/\/ bool for passive mode$/;"	v
+main	client.c	/^int main(int argc, char* argv[])$/;"	f
+main	server.c	/^int main (int argc, char *argv[])$/;"	f
+recvMsg	client.c	/^void recvMsg(int sock, char *readBuffer, int size)$/;"	f
+sock	client.c	/^int sock; \/\/ for command path socket$/;"	v
