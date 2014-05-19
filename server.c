@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 
 #define BUFFER_SIZE 1024
-#define USER_MAX 10
+#define USER_MAX 50
 #define COMMAND_SIZE 16
 
 int connectSocket(int port);
@@ -21,8 +21,11 @@ int ftp_pasv(int cltk_sock);
 void ftp_list(int clnt_sock, int d_sock);
 void ftp_pwd(int clnt_sock);
 void ftp_cwd(int clnt_sock, char *arg);
+void ftp_cdup(int clnt_sock);
 
 int serv_sock;
+int sock_list[USER_MAX];
+int sock_list_num=0;
 
 int main (int argc, char *argv[])
 {
@@ -43,25 +46,29 @@ int main (int argc, char *argv[])
 		for(;;)
 		{
 			clnt_addr_size = sizeof(clnt_addr);
+			printf (" new connection ! \n");
 			sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
 			if(sock==-1) {
 				printf("accept() error\n");
 				exit(-1);
 			}
 			// register new sock num to clnt_sock,
-			pthread_create(&thread, NULL, server_thread, (void*)sock);
+			sock_list[sock_list_num] = sock;
+			pthread_create(&thread, NULL, server_thread, (void*)(&sock_list[sock_list_num]));
+			sock_list_num++;
 		}
 	}
+	return 0;
 }
 
 void* server_thread (void *args)
 {
-	int clnt_sock = (int) args;
+	int clnt_sock = *((int*) args);
 	char readBuffer[BUFFER_SIZE];
 	char sendBuffer[BUFFER_SIZE];
 	char cmd[COMMAND_SIZE];
 	char arg[BUFFER_SIZE];
-	
+	int recv_byte;	
 	int is_logged = 0;
 	int d_sock;
 
@@ -71,9 +78,11 @@ void* server_thread (void *args)
 	
 	for(;;)
 	{
-		recv(clnt_sock, readBuffer, sizeof(readBuffer)-1, 0);
+		recv_byte = recv(clnt_sock, readBuffer, sizeof(readBuffer)-1, 0);
+		if(!recv_byte) return;
+		printf("!!!%d!!!\n", recv_byte);
+		printf("%s ::", readBuffer);
 		sscanf(readBuffer, "%s %s", cmd, arg);
-		printf (" WTF11 \n");
 		// USER recv
 		if(!is_logged) {
 			if(!strcmp(cmd, "USER")) 
@@ -99,14 +108,19 @@ void* server_thread (void *args)
 				d_sock = ftp_pasv(clnt_sock);
 			else if(!strcmp(cmd, "CWD"))
 				ftp_cwd(clnt_sock, arg);
+			else if(!strcmp(cmd, "CDUP"))
+				ftp_cdup(clnt_sock);
 			else if(!strcmp(cmd, "RETR"));		
 			else if(!strcmp(cmd, "STOR"));		
 			else if(!strcmp(cmd, "LIST"))		
 				ftp_list(clnt_sock, d_sock);
 			else if(!strcmp(cmd, "REVRETR"));		
 			else if(!strcmp(cmd, "REVSTOR"));	
+			else if(!strcmp(cmd, "QUIT"))
+				break;
 		}
 	}
+	close(clnt_sock);
 }
 
 // USER, PASS, return 1 is login success. 
@@ -182,12 +196,9 @@ void ftp_list(int clnt_sock, int d_sock)
 	int sock;
 	// 150 send
 	sprintf(sendBuffer, "150 File status okay; about to open data connection.\n");
-	printf (" 150 worked \n");
 	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
-	printf (" send worked \n");
 	// file list send
 	sock = accept(d_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
-	printf (" acccept worked \n");
 	
 	char cwdBuffer[BUFFER_SIZE];
 	getcwd(cwdBuffer, sizeof(cwdBuffer));
@@ -198,7 +209,6 @@ void ftp_list(int clnt_sock, int d_sock)
 	int list_length=0; // for sprintf append 
 	while(entry = readdir(dp))
 	{
-		
 		stat(entry->d_name, &file_stat); // load stat file
 		// directory?
 		char is_dir = (file_stat.st_mode & S_IFDIR) ? 'd' : '-';
@@ -229,13 +239,12 @@ void ftp_list(int clnt_sock, int d_sock)
 				mtime, entry->d_name);
 	}
 	if ( send(sock, listBuffer, strlen(listBuffer), 0) != -1) {
-		printf("%s", listBuffer);
 		// 226 send
+		close(sock);
+		close(d_sock);
 		memset(sendBuffer, 0, sizeof(sendBuffer));
 		sprintf(sendBuffer, "226 Closing data connection.\n");
 		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
-		close(sock);
-		close(d_sock);
 	}
 
 }
@@ -256,7 +265,6 @@ void ftp_cwd(int clnt_sock, char *arg)
 	char sendBuffer[BUFFER_SIZE];
 	if (!chdir(arg)) {
 		sprintf(sendBuffer, "250 Requested file action okay, completed.\n");
-		printf(" ???????? \n" );
 		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
 	}
 	else {
@@ -264,11 +272,25 @@ void ftp_cwd(int clnt_sock, char *arg)
 		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
 	}
 }
-
+// CDUP
+void ftp_cdup(int clnt_sock)
+{
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	if (!chdir("..")) {
+		sprintf(sendBuffer, "250 Requested file action okay, completed.\n");
+		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	}
+	else {
+		sprintf(sendBuffer, "550 Requested action not taken.\n");
+		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	}
+}
 // Socket Connection
 int connectSocket(int port)
 {
 	int sock;
+	int temp=1;
 	struct sockaddr_in serv_addr;
 	struct sockaddr_in clnt_addr;
 	socklen_t clnt_addr_size;
@@ -284,8 +306,10 @@ int connectSocket(int port)
 	serv_addr.sin_addr.s_addr=htonl(INADDR_ANY);
 	serv_addr.sin_port=htons(port);
 
+	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &temp, sizeof(temp));
 	if(bind(sock, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == -1) {
-		printf ("bind() error\n"); 
+		printf ("bind() error\n");
+		printf("port:%d, sock:%d, \n", port, sock);
 		exit(-1);
 	}
 	if (listen(sock, 5)== -1) {
