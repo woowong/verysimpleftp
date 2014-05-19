@@ -48,7 +48,6 @@ int main (int argc, char *argv[])
 				printf("accept() error\n");
 				exit(-1);
 			}
-			
 			// register new sock num to clnt_sock,
 			pthread_create(&thread, NULL, server_thread, (void*)sock);
 		}
@@ -74,13 +73,27 @@ void* server_thread (void *args)
 	{
 		recv(clnt_sock, readBuffer, sizeof(readBuffer)-1, 0);
 		sscanf(readBuffer, "%s %s", cmd, arg);
+		printf (" WTF11 \n");
 		// USER recv
 		if(!is_logged) {
 			if(!strcmp(cmd, "USER")) 
 				is_logged = ftp_user(clnt_sock, arg);
 		}
 		else {
-			if(!strcmp(cmd, "PWD"))
+			if(!strcmp(cmd, "SYST")|!strcmp(cmd, "FEAT")) {
+				sprintf(sendBuffer, "215 NAME system type. \n");
+				send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+			}
+			else if(!strcmp(cmd, "TYPE")) {
+				sprintf(sendBuffer, "200 Switching to Binary mode.\n");
+				send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+			}
+			else if(!strcmp(cmd, "PORT")) {
+				sprintf(sendBuffer, "200 command okay.\n");
+				send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+			}
+
+			else if(!strcmp(cmd, "PWD"))
 				ftp_pwd(clnt_sock);
 			else if(!strcmp(cmd, "PASV"))		
 				d_sock = ftp_pasv(clnt_sock);
@@ -91,7 +104,7 @@ void* server_thread (void *args)
 			else if(!strcmp(cmd, "LIST"))		
 				ftp_list(clnt_sock, d_sock);
 			else if(!strcmp(cmd, "REVRETR"));		
-			if(!strcmp(cmd, "REVSTOR"))	;	
+			else if(!strcmp(cmd, "REVSTOR"));	
 		}
 	}
 }
@@ -151,7 +164,7 @@ int ftp_pasv(int clnt_sock)
 	ip[3] = (int)((serv_addr.sin_addr.s_addr&0xFF000000)>>24);
 	// create new socket for data path
 	d_sock = connectSocket(pasv_port);
-	sprintf(sendBuffer, "227 Entering Passive Mode (%d, %d, %d, %d, %d, %d).\n", 
+	sprintf(sendBuffer, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n", 
 			ip[0], ip[1], ip[2], ip[3], port0, port1);
 	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
 	return d_sock;
@@ -171,8 +184,10 @@ void ftp_list(int clnt_sock, int d_sock)
 	sprintf(sendBuffer, "150 File status okay; about to open data connection.\n");
 	printf (" 150 worked \n");
 	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	printf (" send worked \n");
 	// file list send
 	sock = accept(d_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
+	printf (" acccept worked \n");
 	
 	char cwdBuffer[BUFFER_SIZE];
 	getcwd(cwdBuffer, sizeof(cwdBuffer));
@@ -241,6 +256,7 @@ void ftp_cwd(int clnt_sock, char *arg)
 	char sendBuffer[BUFFER_SIZE];
 	if (!chdir(arg)) {
 		sprintf(sendBuffer, "250 Requested file action okay, completed.\n");
+		printf(" ???????? \n" );
 		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
 	}
 	else {
@@ -279,3 +295,4 @@ int connectSocket(int port)
 
 	return sock;
 }
+
