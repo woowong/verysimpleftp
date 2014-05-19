@@ -12,6 +12,7 @@
 // etc.
 void cmdHandler(char *cmd);
 // command function
+void ftp_bye(char *cmd);
 void ftp_open(char *cmd);
 void ftp_pwd(char *cmd);
 void ftp_cd(char *cmd);
@@ -27,13 +28,14 @@ void recvMsg(int sock, char *readBuffer, int size);
 int sock; // for command path socket
 int d_sock; // data path socket
 int is_passive=0; // bool for passive mode
+int is_off=0;
 
 int main(int argc, char* argv[])
 {
 	char cmd[COMMAND_SIZE]; // buffer for Command input
 	int is_connected = 0; // boolean variable for connection status
 	if (argc == 3) {
-		for (;;)
+		for (;is_off==0;)
 		{
 			if (is_connected) {
 				printf("ftp>");
@@ -85,6 +87,17 @@ void cmdHandler(char *cmd)
 	{
 		// REVSTOR <file>
 	}
+	else if ( !strcmp(token, "bye") )
+		ftp_bye(cmd);
+}
+
+void ftp_bye(char *cmd)
+{
+	char sendBuffer[BUFFER_SIZE];
+	sprintf(sendBuffer, "QUIT\r\n");
+	send(sock, sendBuffer, strlen(sendBuffer), 0);
+	close(sock);
+	is_off = 1;
 }
 
 // open connection, USER, PASS command
@@ -210,13 +223,9 @@ void ftp_get(char *cmd)
 	recvMsg(sock, readBuffer, sizeof(readBuffer));
 	printf("%s\n", readBuffer);
 	
-	sscanf( strchr(readBuffer, '(')+1, "%d", &file_size );
 	fd = open(nameBuffer, O_WRONLY | O_CREAT, 0755);
-	while (total_byte < file_size) {
-		read_byte = recv(d_sock, fileBuffer, sizeof(fileBuffer), 0);
+	while (read_byte = recv(d_sock, fileBuffer, sizeof(fileBuffer), 0))
 		write(fd, fileBuffer, read_byte);
-		total_byte += read_byte;
-	}
 	close(fd);
 	
 	recvMsg(sock, readBuffer, sizeof(readBuffer));
@@ -274,7 +283,7 @@ void ftp_list(char *cmd)
 {
 	char readBuffer[BUFFER_SIZE];
 	char sendBuffer[BUFFER_SIZE];
-	char listBuffer[BUFFER_SIZE*8];
+	char listBuffer[BUFFER_SIZE*64];
 	char d_ip[16];
 	int d_port;
 	char *token;
