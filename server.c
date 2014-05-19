@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #define BUFFER_SIZE 1024
 #define USER_MAX 50
@@ -18,6 +19,8 @@ void* server_thread(void *args);
 
 int ftp_user(int clnt_sock, char *arg);
 int ftp_pasv(int cltk_sock);
+void ftp_retr(int clnt_sock, char *arg, int d_sock);
+void ftp_stor(int clnt_sock, char *arg, int d_sock);
 void ftp_list(int clnt_sock, int d_sock);
 void ftp_pwd(int clnt_sock);
 void ftp_cwd(int clnt_sock, char *arg);
@@ -46,10 +49,8 @@ int main (int argc, char *argv[])
 		for(;;)
 		{
 			clnt_addr_size = sizeof(clnt_addr);
-			printf (" new connection ! \n");
 			sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
 			if(sock==-1) {
-				printf("accept() error\n");
 				exit(-1);
 			}
 			// register new sock num to clnt_sock,
@@ -80,8 +81,6 @@ void* server_thread (void *args)
 	{
 		recv_byte = recv(clnt_sock, readBuffer, sizeof(readBuffer)-1, 0);
 		if(!recv_byte) return;
-		printf("!!!%d!!!\n", recv_byte);
-		printf("%s ::", readBuffer);
 		sscanf(readBuffer, "%s %s", cmd, arg);
 		// USER recv
 		if(!is_logged) {
@@ -110,8 +109,10 @@ void* server_thread (void *args)
 				ftp_cwd(clnt_sock, arg);
 			else if(!strcmp(cmd, "CDUP"))
 				ftp_cdup(clnt_sock);
-			else if(!strcmp(cmd, "RETR"));		
-			else if(!strcmp(cmd, "STOR"));		
+			else if(!strcmp(cmd, "RETR"))		
+				ftp_retr(clnt_sock, arg, d_sock);
+			else if(!strcmp(cmd, "STOR"))		
+				ftp_stor(clnt_sock, arg, d_sock);
 			else if(!strcmp(cmd, "LIST"))		
 				ftp_list(clnt_sock, d_sock);
 			else if(!strcmp(cmd, "REVRETR"));		
@@ -121,6 +122,7 @@ void* server_thread (void *args)
 		}
 	}
 	close(clnt_sock);
+	sock_list_num--;
 }
 
 // USER, PASS, return 1 is login success. 
@@ -183,7 +185,66 @@ int ftp_pasv(int clnt_sock)
 	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
 	return d_sock;
 }
+// STOR
+void ftp_stor(int clnt_sock, char *arg, int d_sock)
+{
+	struct sockaddr_in clnt_addr;
+	int clnt_addr_size = sizeof(clnt_addr);
+	char readBuffer[BUFFER_SIZE];
+	char fileBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char cmd[COMMAND_SIZE];
+	int sock;
+	// 150 send
+	sprintf(sendBuffer, "150 File status okay; about to open data connection.\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	// file send
+	sock = accept(d_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
 
+	int fd = open(arg, O_WRONLY | O_CREAT, 0755);
+	int read_byte;
+	while ( (read_byte = read(sock, fileBuffer, sizeof(fileBuffer)) ) > 0)
+		write(fd, fileBuffer, read_byte);
+	close(fd);
+
+	// 226
+	close(sock);
+	close(d_sock);
+	memset(sendBuffer, 0, sizeof(sendBuffer));
+	sprintf(sendBuffer, "226 Closing data connection.\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+
+}
+// RETR
+void ftp_retr(int clnt_sock, char *arg, int d_sock)
+{
+	struct sockaddr_in clnt_addr;
+	int clnt_addr_size = sizeof(clnt_addr);
+	char readBuffer[BUFFER_SIZE];
+	char fileBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char cmd[COMMAND_SIZE];
+	int sock;
+	// 150 send
+	sprintf(sendBuffer, "150 File status okay; about to open data connection.\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	// file send
+	sock = accept(d_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
+
+	int fd = open(arg, O_RDONLY);
+	int read_byte;
+	while ( (read_byte = read(fd, fileBuffer, sizeof(fileBuffer)) ) > 0) 
+		write(sock, fileBuffer, read_byte);
+	close(fd);
+
+	// 226
+	close(sock);
+	close(d_sock);
+	memset(sendBuffer, 0, sizeof(sendBuffer));
+	sprintf(sendBuffer, "226 Closing data connection.\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+
+}
 // LIST
 void ftp_list(int clnt_sock, int d_sock)
 {
@@ -309,7 +370,6 @@ int connectSocket(int port)
 	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &temp, sizeof(temp));
 	if(bind(sock, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == -1) {
 		printf ("bind() error\n");
-		printf("port:%d, sock:%d, \n", port, sock);
 		exit(-1);
 	}
 	if (listen(sock, 5)== -1) {

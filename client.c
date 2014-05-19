@@ -223,13 +223,9 @@ void ftp_get(char *cmd)
 	recvMsg(sock, readBuffer, sizeof(readBuffer));
 	printf("%s\n", readBuffer);
 	
-	sscanf( strchr(readBuffer, '(')+1, "%d", &file_size );
 	fd = open(nameBuffer, O_WRONLY | O_CREAT, 0755);
-	while (total_byte < file_size) {
-		read_byte = recv(d_sock, fileBuffer, sizeof(fileBuffer), 0);
+	while (read_byte = recv(d_sock, fileBuffer, sizeof(fileBuffer), 0))
 		write(fd, fileBuffer, read_byte);
-		total_byte += read_byte;
-	}
 	close(fd);
 	
 	recvMsg(sock, readBuffer, sizeof(readBuffer));
