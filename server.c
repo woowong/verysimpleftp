@@ -13,9 +13,14 @@
 int connectSocket(int port);
 void* server_thread(void *args);
 
+int ftp_user(int clnt_sock, char *arg);
+void ftp_pwd(int clnt_sock);
+void ftp_cwd(int clnt_sock, char *arg);
+
+int serv_sock;
+
 int main (int argc, char *argv[])
 {
-	int serv_sock;
 	int sock;
 
 	struct sockaddr_in serv_addr;
@@ -30,13 +35,10 @@ int main (int argc, char *argv[])
 	else {
 		
 		serv_sock = connectSocket(atoi(argv[1]));
-		
 		for(;;)
 		{
 			clnt_addr_size = sizeof(clnt_addr);
-			printf("before accept\n");
 			sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
-			printf("after accept\n");
 			if(sock==-1) {
 				printf("accept() error\n");
 				exit(-1);
@@ -57,6 +59,7 @@ void* server_thread (void *args)
 	char arg[BUFFER_SIZE];
 	
 	int is_logged = 0;
+	int d_sock;
 
 	// init connection
 	sprintf(sendBuffer, "220 Service ready for new user. - woowong\n");
@@ -72,6 +75,17 @@ void* server_thread (void *args)
 				is_logged = ftp_user(clnt_sock, arg);
 		}
 		else {
+			if(!strcmp(cmd, "PWD"))
+				ftp_pwd(clnt_sock);
+			if(!strcmp(cmd, "PASV"))		
+				d_sock = ftp_pasv(clnt_sock);
+			if(!strcmp(cmd, "CWD"))
+				ftp_cwd(clnt_sock, arg);
+			if(!strcmp(cmd, "RETR"));		
+			if(!strcmp(cmd, "STOR"));		
+			if(!strcmp(cmd, "LIST"));		
+			if(!strcmp(cmd, "REVRETR"));		
+			if(!strcmp(cmd, "REVSTOR"))	;	
 		}
 	}
 }
@@ -105,6 +119,65 @@ int ftp_user(int clnt_sock, char *arg)
 	}
 	return 0;
 }
+
+// PASV
+int ftp_pasv(int clnt_sock)
+{
+	struct sockaddr_in serv_addr;
+	int addr_size = sizeof(struct sockaddr_in);
+
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char cmd[COMMAND_SIZE];
+	int pasv_port, port0, port1;
+	int d_sock;
+	// random generate port number
+	srand(time(NULL));
+	pasv_port = 1024 + rand() % (65535 - 1024);
+	port0 = pasv_port / 256;
+	port1 = pasv_port % 256;
+	// get server ip information
+	getsockname(clnt_sock, (struct sockaddr *)&serv_addr, &addr_size);
+	//printf("serv_sock : %d\n", serv_sock);
+	//printf("%s : IP \n", inet_ntoa(serv_addr.sin_addr));
+	printf("%d.%d.%d.%d\n",
+			(int) (serv_addr.sin_addr.s_addr&0xFF),
+			(int)((serv_addr.sin_addr.s_addr&0xFF00)>>8),
+			(int)((serv_addr.sin_addr.s_addr&0xFF0000)>>16),
+			(int)((serv_addr.sin_addr.s_addr&0xFF000000)>>24));
+	/*	
+	// create new socket for data path
+	d_sock = connectSocket(pasv_port);
+	sprintf(readBuffer, "227 Entering Passive Mode (%d, %d, %d, %d, %d, %d).\n");
+	return d_sock;
+	 */
+}
+
+// PWD
+void ftp_pwd(int clnt_sock)
+{
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	getcwd(readBuffer, sizeof(readBuffer));
+	sprintf(sendBuffer, "257 \"%s\"\n", readBuffer);
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+}
+
+// CWD
+void ftp_cwd(int clnt_sock, char *arg)
+{
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	if (!chdir(arg)) {
+		sprintf(sendBuffer, "250 Requested file action okay, completed.\n");
+		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	}
+	else {
+		sprintf(sendBuffer, "550 Requested action not taken.\n");
+		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	}
+}
+
 // Socket Connection
 int connectSocket(int port)
 {
