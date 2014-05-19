@@ -5,6 +5,9 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #define BUFFER_SIZE 1024
 #define USER_MAX 10
@@ -14,6 +17,8 @@ int connectSocket(int port);
 void* server_thread(void *args);
 
 int ftp_user(int clnt_sock, char *arg);
+int ftp_pasv(int cltk_sock);
+void ftp_list(int clnt_sock, int d_sock);
 void ftp_pwd(int clnt_sock);
 void ftp_cwd(int clnt_sock, char *arg);
 
@@ -77,14 +82,15 @@ void* server_thread (void *args)
 		else {
 			if(!strcmp(cmd, "PWD"))
 				ftp_pwd(clnt_sock);
-			if(!strcmp(cmd, "PASV"))		
+			else if(!strcmp(cmd, "PASV"))		
 				d_sock = ftp_pasv(clnt_sock);
-			if(!strcmp(cmd, "CWD"))
+			else if(!strcmp(cmd, "CWD"))
 				ftp_cwd(clnt_sock, arg);
-			if(!strcmp(cmd, "RETR"));		
-			if(!strcmp(cmd, "STOR"));		
-			if(!strcmp(cmd, "LIST"));		
-			if(!strcmp(cmd, "REVRETR"));		
+			else if(!strcmp(cmd, "RETR"));		
+			else if(!strcmp(cmd, "STOR"));		
+			else if(!strcmp(cmd, "LIST"))		
+				ftp_list(clnt_sock, d_sock);
+			else if(!strcmp(cmd, "REVRETR"));		
 			if(!strcmp(cmd, "REVSTOR"))	;	
 		}
 	}
@@ -130,6 +136,7 @@ int ftp_pasv(int clnt_sock)
 	char sendBuffer[BUFFER_SIZE];
 	char cmd[COMMAND_SIZE];
 	int pasv_port, port0, port1;
+	int ip[4];
 	int d_sock;
 	// random generate port number
 	srand(time(NULL));
@@ -138,21 +145,85 @@ int ftp_pasv(int clnt_sock)
 	port1 = pasv_port % 256;
 	// get server ip information
 	getsockname(clnt_sock, (struct sockaddr *)&serv_addr, &addr_size);
-	//printf("serv_sock : %d\n", serv_sock);
-	//printf("%s : IP \n", inet_ntoa(serv_addr.sin_addr));
-	printf("%d.%d.%d.%d\n",
-			(int) (serv_addr.sin_addr.s_addr&0xFF),
-			(int)((serv_addr.sin_addr.s_addr&0xFF00)>>8),
-			(int)((serv_addr.sin_addr.s_addr&0xFF0000)>>16),
-			(int)((serv_addr.sin_addr.s_addr&0xFF000000)>>24));
-	/*	
+	ip[0] = (int) (serv_addr.sin_addr.s_addr&0xFF);
+	ip[1] =	(int)((serv_addr.sin_addr.s_addr&0xFF00)>>8);
+	ip[2] =	(int)((serv_addr.sin_addr.s_addr&0xFF0000)>>16);
+	ip[3] = (int)((serv_addr.sin_addr.s_addr&0xFF000000)>>24);
 	// create new socket for data path
 	d_sock = connectSocket(pasv_port);
-	sprintf(readBuffer, "227 Entering Passive Mode (%d, %d, %d, %d, %d, %d).\n");
+	sprintf(sendBuffer, "227 Entering Passive Mode (%d, %d, %d, %d, %d, %d).\n", 
+			ip[0], ip[1], ip[2], ip[3], port0, port1);
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
 	return d_sock;
-	 */
 }
 
+// LIST
+void ftp_list(int clnt_sock, int d_sock)
+{
+	struct sockaddr_in clnt_addr;
+	int clnt_addr_size = sizeof(clnt_addr);
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char listBuffer[BUFFER_SIZE*64];
+	char cmd[COMMAND_SIZE];
+	int sock;
+	// 150 send
+	sprintf(sendBuffer, "150 File status okay; about to open data connection.\n");
+	printf (" 150 worked \n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	// file list send
+	sock = accept(d_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
+	
+	char cwdBuffer[BUFFER_SIZE];
+	getcwd(cwdBuffer, sizeof(cwdBuffer));
+	DIR* dp = opendir(cwdBuffer);
+	
+	struct dirent *entry;
+	struct stat file_stat;
+	int list_length=0; // for sprintf append 
+	while(entry = readdir(dp))
+	{
+		
+		stat(entry->d_name, &file_stat); // load stat file
+		// directory?
+		char is_dir = (file_stat.st_mode & S_IFDIR) ? 'd' : '-';
+		// permission 
+		char owner_p[4], group_p[4], other_p[4];
+		int perm = file_stat.st_mode & S_IRWXU;
+		sprintf(owner_p, "%c%c%c", perm&0x4?'r':'-', perm&0x2?'w':'-', perm&0x1?'x':'-');
+		perm = file_stat.st_mode & S_IRWXG;
+		sprintf(group_p, "%c%c%c", perm&0x4?'r':'-', perm&0x2?'w':'-', perm&0x1?'x':'-');
+		perm = file_stat.st_mode & S_IRWXO;
+		sprintf(other_p, "%c%c%c", perm&0x4?'r':'-', perm&0x2?'w':'-', perm&0x1?'x':'-');
+		// link number
+		int link_num = file_stat.st_nlink;
+		// uid, gid
+		int uid = file_stat.st_uid;
+		int gid = file_stat.st_gid;
+		// filesize
+		int filesize = file_stat.st_size;
+		// modified time
+		time_t rawtime = file_stat.st_mtime;
+		struct tm *st_time = localtime(&rawtime);
+		char mtime[60];
+		strftime(mtime,80,"%b %d %H:%M",st_time);
+
+		list_length += sprintf(listBuffer+list_length, "%c%s%s%s\t%d\t%d\t%d\t%d\t%s\t%s\n", 
+				is_dir, owner_p, group_p, other_p, 
+				link_num, uid, gid, filesize,
+				mtime, entry->d_name);
+	}
+	if ( send(sock, listBuffer, strlen(listBuffer), 0) != -1) {
+		printf("%s", listBuffer);
+		// 226 send
+		memset(sendBuffer, 0, sizeof(sendBuffer));
+		sprintf(sendBuffer, "226 Closing data connection.\n");
+		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+		close(sock);
+		close(d_sock);
+	}
+
+}
 // PWD
 void ftp_pwd(int clnt_sock)
 {
