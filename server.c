@@ -6,20 +6,22 @@
 #include <sys/socket.h>
 #include <pthread.h>
 
+#define BUFFER_SIZE 1024
+#define USER_MAX 10
+#define COMMAND_SIZE 16
+
 int connectSocket(int port);
 void* server_thread(void *args);
 
 int main (int argc, char *argv[])
 {
 	int serv_sock;
-	int clnt_sock;
+	int sock;
 
 	struct sockaddr_in serv_addr;
 	struct sockaddr_in clnt_addr;
 	socklen_t clnt_addr_size;
 	pthread_t thread;
-
-	int tt=5;
 
 	if (argc < 2) {
 		printf("Usage : %s <Port> \n", argv[0]);
@@ -28,31 +30,81 @@ int main (int argc, char *argv[])
 	else {
 		
 		serv_sock = connectSocket(atoi(argv[1]));
-
-
+		
 		for(;;)
 		{
 			clnt_addr_size = sizeof(clnt_addr);
 			printf("before accept\n");
-			clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
+			sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
 			printf("after accept\n");
-			if(clnt_sock==-1) {
+			if(sock==-1) {
 				printf("accept() error\n");
 				exit(-1);
 			}
 			
-			pthread_create(&thread, NULL, server_thread, (void*)&tt);
-			
+			// register new sock num to clnt_sock,
+			pthread_create(&thread, NULL, server_thread, (void*)sock);
 		}
-
 	}
 }
 
 void* server_thread (void *args)
 {
+	int clnt_sock = (int) args;
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char cmd[COMMAND_SIZE];
+	char arg[BUFFER_SIZE];
 	
+	int is_logged = 0;
+
+	// init connection
+	sprintf(sendBuffer, "220 Service ready for new user. - woowong\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	
+	for(;;)
+	{
+		recv(clnt_sock, readBuffer, sizeof(readBuffer)-1, 0);
+		sscanf(readBuffer, "%s %s", cmd, arg);
+		// USER recv
+		if(!is_logged) {
+			if(!strcmp(cmd, "USER")) 
+				is_logged = ftp_user(clnt_sock, arg);
+		}
+		else {
+		}
+	}
 }
 
+// USER, PASS, return 1 is login success. 
+int ftp_user(int clnt_sock, char *arg)
+{
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char cmd[COMMAND_SIZE];
+	if(!strcmp(arg, "anonymous")) {
+		sprintf(sendBuffer, "331 User name okay, need password.\n");
+		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+		// PASS recv
+		recv(clnt_sock, readBuffer, sizeof(readBuffer)-1, 0);
+		sscanf(readBuffer, "%s %*s", cmd);
+		if(!strcmp(cmd, "PASS")) {
+			// login success
+			sprintf(sendBuffer, "230 User logged in, proceed.\n");
+			send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+			return 1;
+		}
+		else {
+			sprintf(sendBuffer, "530 Not logged in, proceed.\n");
+			send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+		}
+	}
+	else {
+		sprintf(sendBuffer, "530 Not logged in, proceed.\n");
+		send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	}
+	return 0;
+}
 // Socket Connection
 int connectSocket(int port)
 {
@@ -60,7 +112,7 @@ int connectSocket(int port)
 	struct sockaddr_in serv_addr;
 	struct sockaddr_in clnt_addr;
 	socklen_t clnt_addr_size;
-	
+
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == -1) {
 		printf ("socket() error\n");
