@@ -254,6 +254,7 @@ void ftp_get(char *cmd)
 	char nameBuffer[BUFFER_SIZE];
 	char fileBuffer[BUFFER_SIZE]; 
 	char d_ip[16];
+	char *token;
 	int d_port;
 	int file_size;
 	int read_byte, total_byte=0;
@@ -272,18 +273,25 @@ void ftp_get(char *cmd)
 		
 	sprintf(sendBuffer, "RETR %s\r\n", nameBuffer);
 	send(sock, sendBuffer, strlen(sendBuffer), 0);
-	recvMsg(sock, readBuffer, sizeof(readBuffer));
-	printf("%s\n", readBuffer);
 	
+	// receive message wait 150
+	recvMsg(sock, readBuffer, sizeof(readBuffer));
+	token = strtok(readBuffer, "\n");
+	printf("%s\n", token);
+	token = strtok(NULL, "\n");
+	if(token == NULL) // wait 226
+		recvMsg(sock, readBuffer, sizeof(readBuffer));
+	else
+		strcpy(readBuffer, token);
+	// file transfer
 	fd = open(nameBuffer, O_WRONLY | O_CREAT, 0755);
-	while (read_byte = recv(d_sock, fileBuffer, sizeof(fileBuffer), 0))
+	memset(fileBuffer, 0, sizeof(fileBuffer));
+	while ( (read_byte = recv(d_sock, fileBuffer, sizeof(fileBuffer), 0)) > 0)
 		write(fd, fileBuffer, read_byte);
 	close(fd);
-	
-	recvMsg(sock, readBuffer, sizeof(readBuffer));
-	printf("%s\n", readBuffer);
-
 	close(d_sock);
+	// 	
+	printf("%s\n", readBuffer);
 }
 
 // STOR command
@@ -294,6 +302,7 @@ void ftp_put(char *cmd)
 	char nameBuffer[BUFFER_SIZE];
 	char fileBuffer[BUFFER_SIZE]; 
 	char d_ip[16];
+	char *token;
 	int d_port;
 	int file_size;
 	int read_byte, total_byte=0;
@@ -310,20 +319,16 @@ void ftp_put(char *cmd)
 	// make data path conneciton
 	get_passive(d_ip, &d_port);
 	d_sock = connectSocket(d_ip, d_port);
-		
+
 	sprintf(sendBuffer, "STOR %s\r\n", nameBuffer);
 	send(sock, sendBuffer, strlen(sendBuffer), 0);
 	recvMsg(sock, readBuffer, sizeof(readBuffer));
 	printf("%s\n", readBuffer);
-	
+
 	fd = open(nameBuffer, O_RDONLY);
 	while ( (read_byte = read(fd, fileBuffer, sizeof(fileBuffer)) ) > 0)
-	{
 		write(d_sock, fileBuffer, read_byte);
-		total_byte += read_byte;
-	}
 	close(fd);
-
 	close(d_sock);
 
 	recvMsg(sock, readBuffer, sizeof(readBuffer));
