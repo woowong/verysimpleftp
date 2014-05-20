@@ -20,7 +20,9 @@ void* server_thread(void *args);
 int ftp_user(int clnt_sock, char *arg);
 int ftp_pasv(int cltk_sock);
 void ftp_retr(int clnt_sock, char *arg, int d_sock);
+void ftp_revretr(int clnt_sock, char *arg, int d_sock);
 void ftp_stor(int clnt_sock, char *arg, int d_sock);
+void ftp_revstor(int clnt_sock, char *arg, int d_sock);
 void ftp_list(int clnt_sock, int d_sock);
 void ftp_pwd(int clnt_sock);
 void ftp_cwd(int clnt_sock, char *arg);
@@ -115,8 +117,10 @@ void* server_thread (void *args)
 				ftp_stor(clnt_sock, arg, d_sock);
 			else if(!strcmp(cmd, "LIST"))		
 				ftp_list(clnt_sock, d_sock);
-			else if(!strcmp(cmd, "REVRETR"));		
-			else if(!strcmp(cmd, "REVSTOR"));	
+			else if(!strcmp(cmd, "REVRETR"))
+				ftp_revretr(clnt_sock, arg, d_sock);
+			else if(!strcmp(cmd, "REVSTOR"))
+				ftp_revstor(clnt_sock, arg, d_sock);
 			else if(!strcmp(cmd, "QUIT"))
 				break;
 		}
@@ -215,6 +219,37 @@ void ftp_stor(int clnt_sock, char *arg, int d_sock)
 	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
 
 }
+// REVSTOR
+void ftp_revstor(int clnt_sock, char *arg, int d_sock)
+{
+	struct sockaddr_in clnt_addr;
+	int clnt_addr_size = sizeof(clnt_addr);
+	char readBuffer[BUFFER_SIZE];
+	char fileBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char cmd[COMMAND_SIZE];
+	int sock;
+	// 150 send
+	sprintf(sendBuffer, "150 File status okay; about to open data connection.\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	// file send
+	sock = accept(d_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
+
+	int fd = open(arg, O_WRONLY | O_CREAT, 0755);
+	int read_byte;
+	char buffer;
+	while ( (read_byte = read(sock, &buffer, 1)) > 0)
+			write(fd, &buffer, 1);
+	close(fd);
+
+	// 226
+	close(sock);
+	close(d_sock);
+	memset(sendBuffer, 0, sizeof(sendBuffer));
+	sprintf(sendBuffer, "226 Closing data connection.\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+
+}
 // RETR
 void ftp_retr(int clnt_sock, char *arg, int d_sock)
 {
@@ -235,6 +270,41 @@ void ftp_retr(int clnt_sock, char *arg, int d_sock)
 	int read_byte;
 	while ( (read_byte = read(fd, fileBuffer, sizeof(fileBuffer)) ) > 0) 
 		write(sock, fileBuffer, read_byte);
+	close(fd);
+
+	// 226
+	close(sock);
+	close(d_sock);
+	memset(sendBuffer, 0, sizeof(sendBuffer));
+	sprintf(sendBuffer, "226 Closing data connection.\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+
+}
+// REVRETR
+void ftp_revretr(int clnt_sock, char *arg, int d_sock)
+{
+	struct sockaddr_in clnt_addr;
+	int clnt_addr_size = sizeof(clnt_addr);
+	char readBuffer[BUFFER_SIZE];
+	char sendBuffer[BUFFER_SIZE];
+	char buffer;
+	char cmd[COMMAND_SIZE];
+	int sock;
+	int i;
+	// 150 send
+	sprintf(sendBuffer, "150 File status okay; about to open data connection.\n");
+	send(clnt_sock, sendBuffer, strlen(sendBuffer), 0);
+	// file send
+	sock = accept(d_sock, (struct sockaddr*)&clnt_addr, &clnt_addr_size);
+
+	int fd = open(arg, O_RDONLY);
+	int file_size = lseek(fd, (off_t) 0, SEEK_END);
+	for(i=file_size-1; i>=0; i--)
+	{
+		lseek(fd, (off_t) i, SEEK_SET);
+		read(fd, &buffer, 1);
+		write(sock, &buffer, 1);
+	}
 	close(fd);
 
 	// 226
